@@ -1,7 +1,8 @@
 [package]
 name = "jl-ui-procmacro"
-version = "0.1.0"
+version = "0.1.2026-dev"
 edition = "2024"
+description = "Procedural macros for jl_UI, providing code generation and compile-time utilities"
 
 [lib]
 proc-macro = true

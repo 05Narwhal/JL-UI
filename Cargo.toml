@@ -3,7 +3,7 @@ name = "jl_UI"
 version = "0.1.2026-dev"
 edition = "2024"
 description = "A Rust UI library using XML for layout and supporting 2D/3D rendering"
-repository = "TODO: Add repository URL"
+repository = "https://github.com/05Narwhal/JL-UI"
 readme = "README.md"
 license = "GPL-3.0"
 keywords = ["ui", "gui", "xml", "game development", "2d", "3d"]
@@ -24,7 +24,7 @@ debug = ["chrono", "log", "env_logger", "colored"]
 quick-xml = "0.39"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
-jl-ui-procmacro = { path = "./jl-ui-procmacro" }
+jl-ui-procmacro = { path = "./jl-ui-procmacro", version = "0.1.2026-dev" }
 macroquad = "0.4.14" # For rendering, input handling and window management
 
 # Extra dependencies for 3D rendering support
