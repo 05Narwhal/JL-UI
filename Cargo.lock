@@ -3145,6 +3145,8 @@ dependencies = [
 [[package]]
 name = "jl-ui-procmacro"
 version = "0.1.2026-dev"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d28b3cb7aac935a4c1d664856b3780d480865300e0fbb837f01343018124fb2f"
 
 [[package]]
 name = "jl_UI"
