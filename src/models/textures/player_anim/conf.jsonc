@@ -1,0 +1,9 @@
+{
+    "name": "player animation",
+    "timing_function": ".17,.67,.62,1.03", // beziers curve
+    "frames": {
+        "path": "./frames",
+        "format": "$0.png",
+        "count": 18
+    }
+}

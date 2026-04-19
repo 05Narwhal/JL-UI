@@ -1,0 +1,427 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+    <!-- * ======== VARIABLE SYSTEM ======== * -->
+    <!--
+      The <def> block appears BEFORE <ui> at the document level.
+      It declares named variables (<var>) and constants (<const>).
+
+      Supported value formats for <var> / <const>:
+        Absolute pixels   : "40px"  "150"  (bare number → px)
+        Percent of parent : "50%"
+        Viewport units    : "30vw"  "20vh"
+        Degrees           : "90deg"  "45deg"  (for angles; resolves to raw number)
+        Hex colour        : "#RRGGBBAA"  "#RRGGBB"  (8 or 6 hex digits, # prefix)
+        Path / string     : "@/src/models/textures"  "./relative"
+        Math expression   : "(40px + 2%) - 2vh + $otherVar"  (+ - * / with () grouping)
+        Variable ref      : "$varName"  (expands to the stored value)
+
+      Variables can be mutated in the <ui> tree via a <var> self-closing tag:
+        <var name="foo" value="+=10px" />   augmented  += -= *= /= %=
+        <var name="foo" value="25px" />     reassign (only mutable vars)
+        <var name="foo" value="==25px" />   force-assign (bypasses const guard)
+
+      Degree vars work seamlessly with augmented assigns:
+        <const name="spin_speed" value="5deg" />
+        <var name="angle" value="0deg" />
+        <var name="angle" value="+=$spin_speed" />   → angle += 5
+    -->
+    <xs:element name="def" type="DefType" />
+
+    <xs:complexType name="DefType">
+        <xs:choice minOccurs="0" maxOccurs="unbounded">
+            <xs:element name="var"   type="VarEntryType" />
+            <xs:element name="const" type="VarEntryType" />
+        </xs:choice>
+    </xs:complexType>
+
+    <!--
+      global="true"  — registers this var/const in the shared GlobalVarStore so it is
+                       visible in all subsequently-loaded XML files without re-declaration.
+      Redefinition rules (enforced at parse time):
+        • Redefining a global <const> in any file            → parse error
+        • Redefining a global <var>   in any file            → allowed (var is mutable)
+        • A file-local entry whose name collides with a global → shadows it locally,
+          no error (the global value is unchanged)
+    -->
+    <xs:complexType name="VarEntryType">
+        <xs:attribute name="name"   type="xs:string"  use="required" />
+        <xs:attribute name="value"  type="xs:string"  use="required" />
+        <xs:attribute name="global" type="xs:boolean" />
+    </xs:complexType>
+
+    <!-- * ======== ROOT ELEMENT ======== * -->
+    <xs:element name="xml" type="XmlType" />
+
+    <xs:complexType name="XmlType">
+        <xs:sequence>
+            <xs:element name="def" type="DefType" minOccurs="0" />
+            <xs:element name="ui" type="UiType" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:element name="ui" type="UiType" />
+
+    <xs:complexType name="UiType">
+        <xs:sequence>
+            <xs:group ref="ComponentGroup" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="SchemaIncludeType">
+        <xs:attribute name="src" type="xs:string" use="required" />
+        <xs:attribute name="type" type="xs:string" />
+    </xs:complexType>
+
+    <!-- * ======== COMPONENT GROUP ======== * -->
+    <xs:group name="ComponentGroup">
+        <xs:choice>
+            <!-- Layout -->
+            <xs:element name="view"               type="ViewType" />
+            <xs:element name="scroll_view"        type="ScrollViewType" />
+
+            <!-- Interactive -->
+            <xs:element name="button"             type="ButtonType" />
+            <xs:element name="slider"             type="SliderType" />
+            <xs:element name="switch"             type="SwitchType" />
+
+            <!-- Text -->
+            <xs:element name="label"              type="LabelType" />
+            <xs:element name="text_field"         type="TextFieldType" />
+
+            <!-- Visual -->
+            <xs:element name="texture"            type="TextureType" />
+            <xs:element name="texture-2d"         type="TextureType" />
+            <xs:element name="animated_texture"   type="AnimatedTextureType" />
+            <xs:element name="animation"           type="AnimatedTextureType" />
+            <xs:element name="gradient"           type="GradientType" />
+            <xs:element name="rect"               type="RectType" />
+
+            <!-- Other -->
+            <xs:element name="progress_bar"       type="ProgressBarType" />
+
+            <!-- Schema include/copy -->
+            <xs:element name="schema"             type="SchemaIncludeType" />
+
+            <!-- Variable mutation (updates VarStore, no component created) -->
+            <xs:element name="var"                type="VarEntryType" />
+
+            <!-- Physics container (experimental) -->
+            <xs:element name="physics-container-2d" type="PhysicsContainer2DType" />
+            <xs:element name="physics-container-3d" type="PhysicsContainer3DType" />
+        </xs:choice>
+    </xs:group>
+
+    <!-- * ======== SHARED BASE ATTRIBUTES ======== * -->
+    <!--
+      width / height accept:
+          "150px"              absolute pixels  (bare "150" → px)
+          "50%"                % of parent dimension
+          "30vw" / "20vh"      % of viewport w/h
+          "auto"               content-measured (labels default to this)
+          "(40px + 2%) - 2vh"  math expression with mixed units
+          "$varName"           variable reference
+
+      x / y accept:
+          "40px"               from parent top-left
+          "-20px"              parent_dim − 20 (from opposite side)
+          "auto" / "$"         parent-aligned (controlled by alignX/alignY)
+          "$ + 20px"           parent-aligned + offset
+          "$varName"           variable reference
+
+      bgColor / color accept:
+          "#RRGGBBAA"          8-digit hex (alpha included)
+          "#RRGGBB"            6-digit hex (fully opaque)
+          "$colorVar"          variable referencing a colour const/var
+          "transparent"        shorthand for #00000000
+
+      fontSize accepts:
+          "24px" or "24"       integer (or integer with px)
+          "$varName"           variable reference
+
+      rotation   — degrees (float), default 0
+      scale      — multiplier (float), default 1.0
+      zOrder     — integer draw priority, default 0
+      visible    — true / false, default true
+      usrInteract — true / false (whether input is processed), default true
+            transition — duration for interactive style changes (e.g. "150ms", "0.2s", "0.2")
+            transitionTiming — easing curve for interactive style transitions:
+                                                 ease | ease-in | ease-out | ease-in-out | linear |
+                                                 cubic-bezier(x1,y1,x2,y2)
+    -->
+    <xs:attributeGroup name="BasicAttrs">
+        <xs:attribute name="id"          type="xs:string" />
+        <xs:attribute name="className"   type="xs:string" />
+        <xs:attribute name="width"       type="xs:string" />
+        <xs:attribute name="height"      type="xs:string" />
+        <xs:attribute name="x"           type="xs:string" />
+        <xs:attribute name="y"           type="xs:string" />
+        <xs:attribute name="rotation"    type="xs:string" />
+        <xs:attribute name="scale"       type="xs:string" />
+        <xs:attribute name="fontSize"    type="xs:string" />
+        <xs:attribute name="zOrder"      type="xs:integer" />
+        <xs:attribute name="visible"     type="xs:boolean" />
+        <xs:attribute name="usrInteract" type="xs:boolean" />
+        <xs:attribute name="bgColor"     type="xs:string" />
+        <xs:attribute name="transition"  type="xs:string" />
+        <xs:attribute name="transitionTiming" type="xs:string" />
+        <xs:attribute name="transitionTimingFunction" type="xs:string" />
+    </xs:attributeGroup>
+
+    <!-- * ======== CONTAINER TYPES ======== * -->
+    <!--
+      alignX: "left" (default) | "center" | "right"
+      alignY: "top"  (default) | "center" | "bottom"
+      Children with x="$" / y="$" are placed according to these alignment values.
+    -->
+    <xs:complexType name="ViewType">
+        <xs:sequence>
+            <xs:group ref="ComponentGroup" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attributeGroup ref="BasicAttrs" />
+        <xs:attribute name="alignX">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="left" />
+                    <xs:enumeration value="center" />
+                    <xs:enumeration value="right" />
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="alignY">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="top" />
+                    <xs:enumeration value="center" />
+                    <xs:enumeration value="bottom" />
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+    </xs:complexType>
+
+    <xs:complexType name="ScrollViewType">
+        <xs:sequence>
+            <xs:group ref="ComponentGroup" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attributeGroup ref="BasicAttrs" />
+        <xs:attribute name="alignX">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="left" />
+                    <xs:enumeration value="center" />
+                    <xs:enumeration value="right" />
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="alignY">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="top" />
+                    <xs:enumeration value="center" />
+                    <xs:enumeration value="bottom" />
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="scrollX" type="xs:boolean" />
+        <xs:attribute name="scrollY" type="xs:boolean" />
+    </xs:complexType>
+
+    <!-- * ======== INTERACTIVE TYPES ======== * -->
+    <xs:complexType name="ButtonType">
+        <xs:sequence>
+            <xs:group ref="ComponentGroup" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attributeGroup ref="BasicAttrs" />
+        <!-- Built-in label drawn centred inside the button (optional) -->
+        <xs:attribute name="text"   type="xs:string" />
+        <xs:attribute name="color"  type="xs:string" />
+        <xs:attribute name="alignX">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="left" />
+                    <xs:enumeration value="center" />
+                    <xs:enumeration value="right" />
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+        <xs:attribute name="alignY">
+            <xs:simpleType>
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="top" />
+                    <xs:enumeration value="center" />
+                    <xs:enumeration value="bottom" />
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+    </xs:complexType>
+
+    <xs:complexType name="SliderType">
+        <xs:attributeGroup ref="BasicAttrs" />
+        <!-- min/max/value: plain number or size expression ("50", "50px") -->
+        <xs:attribute name="min"        type="xs:string" />
+        <xs:attribute name="max"        type="xs:string" />
+        <xs:attribute name="value"      type="xs:string" />
+        <!-- color: thumb/fill colour -->
+        <xs:attribute name="color"      type="xs:string" />
+        <!-- trackColor: background track colour (default dark grey) -->
+        <xs:attribute name="trackColor" type="xs:string" />
+    </xs:complexType>
+
+    <xs:complexType name="SwitchType">
+        <xs:attributeGroup ref="BasicAttrs" />
+        <xs:attribute name="checked" type="xs:boolean" />
+        <xs:attribute name="color"   type="xs:string" />
+    </xs:complexType>
+
+    <!-- * ======== TEXT TYPES ======== * -->
+    <xs:complexType name="LabelType">
+        <xs:attributeGroup ref="BasicAttrs" />
+        <xs:attribute name="text"  type="xs:string" />
+        <xs:attribute name="color" type="xs:string" />
+    </xs:complexType>
+
+    <xs:complexType name="TextFieldType">
+        <xs:attributeGroup ref="BasicAttrs" />
+        <xs:attribute name="placeholder" type="xs:string" />
+        <xs:attribute name="text"        type="xs:string" />
+        <xs:attribute name="color"       type="xs:string" />
+    </xs:complexType>
+
+    <!-- * ======== VISUAL TYPES ======== * -->
+    <!--
+      object-fit: "warp" (default/stretch) | "cover" (fill+crop) | "contain" (letterbox)
+      src: file path; use "$pathVar/file.png" to compose from a defined path variable
+           Prefix "@/" resolves relative to the workspace root.
+    -->
+    <xs:complexType name="TextureType">
+        <xs:attributeGroup ref="BasicAttrs" />
+        <xs:attribute name="src"        type="xs:string" />
+        <xs:attribute name="object-fit" type="xs:string" />
+    </xs:complexType>
+
+    <!--
+      animated_texture / animation: plays a folder of image frames as a sprite animation.
+
+      src        — path to the folder containing conf.jsonc and frame images.
+                   Supports $var substitution and the @/ workspace-root prefix.
+      fps        — playback speed in frames-per-second (default 12)
+      loop       — whether to restart automatically at the end (default false)
+      autoplay   — begin playing immediately after asset load (default false)
+      opacity    — alpha multiplier 0–1 (default 1.0)
+      object-fit — "warp" (stretch, default) | "cover" (fill+crop) | "contain" (letterbox)
+
+      The folder must contain a conf.jsonc file:
+        {
+          "timing_function": ".17,.67,.62,1.03",  // CSS cubic-bezier x1,y1,x2,y2
+          "frames": {
+            "path":   "./frames",   // sub-folder relative to src; use "" or "./" for same folder
+            "format": "$0.png",    // $N = frame starts at index N (e.g. $0 → 0.png, 1.png …)
+            "count":  18           // total number of frames
+          }
+        }
+
+      Example:
+        <animation id="player" src="$textures/player_anim"
+                   fps="18" loop="true" autoplay="true" opacity="0.75" object-fit="cover" />
+    -->
+    <xs:complexType name="AnimatedTextureType">
+        <xs:attributeGroup ref="BasicAttrs" />
+        <xs:attribute name="src"        type="xs:string" />
+        <xs:attribute name="fps"        type="xs:float" />
+        <xs:attribute name="loop"       type="xs:boolean" />
+        <xs:attribute name="autoplay"   type="xs:boolean" />
+        <xs:attribute name="opacity"    type="xs:string" />
+        <xs:attribute name="object-fit" type="xs:string" />
+    </xs:complexType>
+
+    <!--
+      gradient: two-stop colour gradient filling the component bounds.
+
+      type:   "linear"   (default) — linear gradient along an angle
+              "radial"           — radial gradient from centre outward
+
+      angle:  direction of the gradient in Cartesian degrees.
+              0°=right  90°=up  180°=left  270°=down  (CCW positive).
+              Accepts any size/angle expression: "90deg", "45deg", "$angle_var",
+              "$angle_var + 10deg", etc.  Only used for type="line".
+
+      color1: start colour (at angle origin side for line; centre for radial)
+      color2: end colour   (at opposite side for line; edges for radial)
+
+      Examples:
+        <gradient type="line"   angle="90deg"  color1="#2F3061FF" color2="#6CA6C1FF" ... />
+        <gradient type="radial" color1="#FFFFFFFF" color2="#00000088" ... />
+        <gradient type="line"   angle="$bg_angle" color1="$primary_color" color2="$tertiary_color" ... />
+    -->
+    <xs:complexType name="GradientType">
+        <xs:attributeGroup ref="BasicAttrs" />
+        <xs:attribute name="type"   type="xs:string" />
+        <xs:attribute name="angle"  type="xs:string" />
+        <xs:attribute name="color1" type="xs:string" />
+        <xs:attribute name="color2" type="xs:string" />
+    </xs:complexType>
+
+    <!--
+      rect: a plain rectangle with optional fill, border, and corner radius.
+
+      bgColor       — fill colour (transparent by default)
+      borderColor   — outline colour (transparent by default → no border)
+      borderWidth   — outline thickness in pixels (default 0)
+      cornerRadius  — corner rounding in pixels (stored; currently rendered as sharp corners)
+    -->
+    <xs:complexType name="RectType">
+        <xs:attributeGroup ref="BasicAttrs" />
+        <xs:attribute name="borderColor"  type="xs:string" />
+        <xs:attribute name="borderWidth"  type="xs:string" />
+        <xs:attribute name="cornerRadius" type="xs:string" />
+    </xs:complexType>
+
+    <!-- * ======== OTHER TYPES ======== * -->
+    <xs:complexType name="ProgressBarType">
+        <xs:attributeGroup ref="BasicAttrs" />
+        <!-- value/max: plain number or size expression -->
+        <xs:attribute name="value" type="xs:string" />
+        <xs:attribute name="max"   type="xs:string" />
+        <xs:attribute name="color" type="xs:string" />
+    </xs:complexType>
+
+    <!-- * ========== PHYSICS TYPES ========== * -->
+    <xs:complexType name="PhysicsContainer2DType">
+        <xs:sequence>
+            <xs:group ref="ComponentGroup" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attribute name="id"        type="xs:string"  />
+        <xs:attribute name="className" type="xs:string"  />
+        <xs:attribute name="width"     type="xs:string"  />
+        <xs:attribute name="height"    type="xs:string"  />
+        <xs:attribute name="x"         type="xs:string"  />
+        <xs:attribute name="y"         type="xs:string"  />
+        <xs:attribute name="visible"   type="xs:boolean" />
+        <xs:attribute name="zOrder"    type="xs:integer" />
+        <xs:attribute name="engine"    default="macroquad">
+            <xs:simpleType >
+                <xs:restriction base="xs:string" >
+                    <xs:enumeration value="bevy" />
+                    <xs:enumeration value="macroquad" />
+                </xs:restriction>
+            </xs:simpleType>
+        </xs:attribute>
+    </xs:complexType>
+
+    <!-- * ~~~ 3D Pysics container ~~~ * -->
+    <xs:complexType name="PhysicsContainer3DType">
+        <xs:sequence>
+            <xs:group ref="ComponentGroup" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attribute name="id"        type="xs:string"  />
+        <xs:attribute name="className" type="xs:string"  />
+        <xs:attribute name="width"     type="xs:string"  />
+        <xs:attribute name="height"    type="xs:string"  />
+        <xs:attribute name="x"         type="xs:string"  />
+        <xs:attribute name="y"         type="xs:string"  />
+        <xs:attribute name="visible"   type="xs:boolean" />
+        <xs:attribute name="zOrder"    type="xs:integer" />
+    </xs:complexType>
+
+
+</xs:schema>

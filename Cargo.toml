@@ -1,0 +1,37 @@
+[package]
+name = "jl_UI"
+version = "0.1.2026-dev"
+edition = "2024"
+description = "A Rust UI library using XML for layout and supporting 2D/3D rendering"
+repository = "TODO: Add repository URL"
+readme = "README.md"
+license = "GPL-3.0"
+keywords = ["ui", "gui", "xml", "game development", "2d", "3d"]
+categories = ["game-development", "gui", "graphics"]
+exclude = ["tests/*", "logs/*"]
+
+[features]
+default = ["debug"]
+
+audio = []
+input = []
+ui-2d = []
+ui-3d = ["bevy"]
+debug = ["chrono", "log", "env_logger", "colored"]
+
+[dependencies]
+# Core dependencies for UI functionality
+quick-xml = "0.39"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+jl-ui-procmacro = { path = "./jl-ui-procmacro" }
+macroquad = "0.4.14" # For rendering, input handling and window management
+
+# Extra dependencies for 3D rendering support
+bevy = { version = "0.18.1", optional = true }
+
+# Optional dependencies, used for development and debugging
+chrono = { version = "0.4.44", optional = true }
+log = { version = "0.4.29", optional = true }
+env_logger = { version = "0.11", optional = true }
+colored = { version = "3.1.1", optional = true }
